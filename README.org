@@ -1,0 +1,7 @@
+#+TITLE: emacs-ffi-test
+
+Where I try to get Rust code to run in Emacs.
+
+I borrowed code from [[https://github.com/jjpe/emacs_module_bindings][here]] 
+and read [[https://mrosset.github.io/emacs-module/][this]] this. It doesn't
+quite work as-is.
