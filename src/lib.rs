@@ -39,17 +39,18 @@ pub unsafe extern "C" fn emacs_module_init(ert: *mut emacs_runtime) -> libc::c_i
         0,
         0,
         Some(my_func),
-        make_str("This is a function written in Rust!"),
+        CString::new("This is a function written in Rust")
+            .unwrap()
+            .as_ptr(),
         std::ptr::null_mut(),
     );
 
+    let intern = (*env).intern.expect("could not get intern in main");
+
     println!("interning my-rust-func");
-    let fn_name = intern_sym(env, "my-rust-func");
-
+    let fn_name = intern(env, CString::new("my-rust-fn").unwrap().as_ptr());
     println!("interning my-rust-mod");
-    let mod_name = intern_sym(env, "my-rust-mod");
-
-    let intern = unsafe { (*env).intern.expect("could not get intern in main") };
+    let mod_name = intern(env, CString::new("my-rust-mod").unwrap().as_ptr());
 
     let fset = intern(env, CString::new("fset").unwrap().as_ptr());
     let provide = intern(env, CString::new("provide").unwrap().as_ptr());
@@ -62,10 +63,6 @@ pub unsafe extern "C" fn emacs_module_init(ert: *mut emacs_runtime) -> libc::c_i
     funcall(env, fset, 2, fset_args);
     println!("calling provide");
     funcall(env, provide, 1, provide_args);
-    let message = intern(env, CString::new("message").unwrap().as_ptr());
-
-    let msg_str = make_emacs_string(env, "We should be loaded now!");
-    funcall(env, message, 1, [msg_str].as_mut_ptr());
 
     println!("end");
 
@@ -87,10 +84,9 @@ unsafe extern "C" fn my_func(
 ) -> emacs_value {
     let s = "Hello Emacs! I'm from Rust!";
     let make_string = (*env).make_string.unwrap();
-    let c_string = CString::new(s).unwrap().as_ptr();
-    let len = libc::strlen(c_string) as isize;
-    println!("returning string");
-    make_string(env, c_string, len)
+    let c_string = CString::new(s).unwrap();
+    let len = c_string.as_bytes().len() as isize;
+    make_string(env, c_string.as_ptr(), len)
 }
 
 pub extern "C" fn make_emacs_string<S>(env: *mut emacs_env, string: S) -> emacs_value
