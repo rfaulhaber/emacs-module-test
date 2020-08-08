@@ -12,6 +12,10 @@ fn main() {
         // bindings for.
         .header("/usr/include/emacs-module.h")
         .blacklist_function("emacs_module_init")
+        // .whitelist_type("^emacs.*")
+        // .whitelist_function("^emacs.*")
+        // .whitelist_var("^emacs.*")
+        .prepend_enum_name(false)
         // Tell cargo to invalidate the built crate whenever any of the
         // included header files changed.
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))

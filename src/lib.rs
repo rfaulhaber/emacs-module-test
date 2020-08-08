@@ -7,6 +7,13 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 use std::ffi::CString;
 use std::os::raw;
 
+type EmacsFn = unsafe extern "C" fn(
+    env: *mut emacs_env,
+    nargs: isize,
+    args: *mut emacs_value,
+    arg1: *mut ::std::os::raw::c_void,
+) -> emacs_value;
+
 #[no_mangle]
 #[allow(non_upper_case_globals)]
 pub static plugin_is_GPL_compatible: libc::c_int = 0;
@@ -14,77 +21,76 @@ pub static plugin_is_GPL_compatible: libc::c_int = 0;
 #[no_mangle]
 pub extern "C" fn get_environment(ert: *mut emacs_runtime) -> *mut emacs_env {
     unsafe {
-        let get_env = (*ert).get_environment.unwrap();
+        let get_env = (*ert)
+            .get_environment
+            .expect("cannot get emacs enviornment");
         get_env(ert)
     }
 }
 
 #[no_mangle]
-pub extern "C" fn emacs_module_init(ert: *mut emacs_runtime) -> libc::c_int {
+pub unsafe extern "C" fn emacs_module_init(ert: *mut emacs_runtime) -> libc::c_int {
     let env = get_environment(ert);
 
-    unsafe {
-        let make_function = (*env).make_function.unwrap();
-        let f = make_function(
-            env,
-            0,
-            0,
-            Some(my_func),
-            CString::new("This is a test function written in Rust!")
-                .unwrap()
-                .as_ptr(),
-            [].as_mut_ptr(),
-        );
+    println!("making function");
+    let make_function = (*env).make_function.expect("cannot get make_function");
+    let f = make_function(
+        env,
+        0,
+        0,
+        Some(my_func),
+        make_str("This is a function written in Rust!"),
+        std::ptr::null_mut(),
+    );
 
-        let intern = (*env).intern.unwrap();
-        let fset = intern(env, CString::new("fset").unwrap().as_ptr());
-        let sym = intern(env, CString::new("my-rust-func").unwrap().as_ptr());
+    println!("interning my-rust-func");
+    let fn_name = intern_sym(env, "my-rust-func");
 
-        let funcall = (*env).funcall.unwrap();
-        // basically the equivalent of (fset 'my-rust-func my_func)
-        funcall(env, fset, 2, [sym, f].as_mut_ptr());
-    }
-    provide(env, "my-rust-mod".into());
+    println!("interning my-rust-mod");
+    let mod_name = intern_sym(env, "my-rust-mod");
+
+    let intern = unsafe { (*env).intern.expect("could not get intern in main") };
+
+    let fset = intern(env, CString::new("fset").unwrap().as_ptr());
+    let provide = intern(env, CString::new("provide").unwrap().as_ptr());
+    let fset_args = [fn_name, f].as_mut_ptr();
+
+    let provide_args = [mod_name].as_mut_ptr();
+
+    let funcall = (*env).funcall.expect("cannot get funcall");
+    println!("calling fset");
+    funcall(env, fset, 2, fset_args);
+    println!("calling provide");
+    funcall(env, provide, 1, provide_args);
+    let message = intern(env, CString::new("message").unwrap().as_ptr());
+
+    let msg_str = make_emacs_string(env, "We should be loaded now!");
+    funcall(env, message, 1, [msg_str].as_mut_ptr());
+
+    println!("end");
 
     0
 }
 
-#[no_mangle]
-pub extern "C" fn find_function(env: *mut emacs_env, name: &str) -> emacs_value {
-    unsafe {
-        let intern = (*env).intern.unwrap();
-        intern(env, CString::new(name).unwrap().as_ptr())
-    }
-}
-#[no_mangle]
-pub extern "C" fn provide(env: *mut emacs_env, feature: String) {
-    let feat = unsafe {
-        let intern = (*env).intern.unwrap();
-        intern(env, CString::new(feature).unwrap().as_ptr())
-    };
-    let provide = find_function(env, "provide");
+unsafe fn provide(env: *mut emacs_env, feature: &str) {
+    let feat = intern_sym(env, feature);
     let args = [feat].as_mut_ptr();
-    unsafe {
-        let funcall = (*env).funcall.unwrap();
-        funcall(env, provide, 1, args)
-    };
+    funcall(env, "provide", 1, args);
 }
 
-// a rust way of writing (get-buffer-create "*hello world*")
 #[no_mangle]
-extern "C" fn my_func(
+unsafe extern "C" fn my_func(
     env: *mut emacs_env,
     nargs: libc::ptrdiff_t,
     args: *mut emacs_value,
     data: *mut raw::c_void,
 ) -> emacs_value {
-    let get_buffer_create = find_function(env, "get-buffer-create");
-    let args = [make_emacs_string(env, "*hello world*")].as_mut_ptr();
-
-    unsafe {
-        let funcall = (*env).funcall.unwrap();
-        funcall(env, get_buffer_create, 1, args)
-    }
+    let s = "Hello Emacs! I'm from Rust!";
+    let make_string = (*env).make_string.unwrap();
+    let c_string = CString::new(s).unwrap().as_ptr();
+    let len = libc::strlen(c_string) as isize;
+    println!("returning string");
+    make_string(env, c_string, len)
 }
 
 pub extern "C" fn make_emacs_string<S>(env: *mut emacs_env, string: S) -> emacs_value
@@ -97,4 +103,26 @@ where
         let make_string = (*env).make_string.unwrap();
         make_string(env, c_string, strlen)
     }
+}
+
+pub unsafe extern "C" fn intern_sym(env: *mut emacs_env, name: &str) -> emacs_value {
+    (*env).intern.expect("cannot get intern")(
+        env,
+        CString::new(name).expect("cannot intern symbol").as_ptr(),
+    )
+}
+
+pub unsafe extern "C" fn funcall(
+    env: *mut emacs_env,
+    name: &str,
+    nargs: isize,
+    args: *mut emacs_value,
+) -> emacs_value {
+    let qf = intern_sym(env, name);
+    let funcall = (*env).funcall.expect("cannot get funcall");
+    funcall(env, qf, nargs, args)
+}
+
+fn make_str(s: &str) -> *const i8 {
+    CString::new(s).unwrap().as_ptr()
 }
