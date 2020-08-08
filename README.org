@@ -2,6 +2,15 @@
 
 Where I try to get Rust code to run in Emacs.
 
-I borrowed code from [[https://github.com/jjpe/emacs_module_bindings][here]] 
-and read [[https://mrosset.github.io/emacs-module/][this]] this. It doesn't
-quite work as-is.
+I borrowed code from [[https://github.com/jjpe/emacs_module_bindings][here]] and read [[https://mrosset.github.io/emacs-module/][this]] this.
+
+This very naive module provides a feature to Emacs called =my-rust-mod= and a
+function called =my-rust-fn=, which returns a string.
+
+For reasons I don't understand, here are some issues:
+
+- When compiled with =--release=, Emacs cannot load this module. It gives the
+  error "Wrong type argument: symbolp, 1619370". I haven't figured out why
+- Many of my own functions don't work. If you replace a call to =intern= with
+  =intern_sym=, for example, where the latter does the same as the former, this
+  code will cause a segfault
