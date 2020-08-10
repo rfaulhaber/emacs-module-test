@@ -34,12 +34,23 @@ pub unsafe extern "C" fn emacs_module_init(ert: *mut emacs_runtime) -> libc::c_i
 
     println!("making function");
     let make_function = (*env).make_function.expect("cannot get make_function");
-    let f = make_function(
+    let my_message = make_function(
         env,
         0,
         0,
-        Some(my_func),
-        CString::new("This is a function written in Rust")
+        Some(message_from_rust),
+        CString::new("This will print a nice message from Rust!")
+            .unwrap()
+            .as_ptr(),
+        std::ptr::null_mut(),
+    );
+
+    let my_sum = make_function(
+        env,
+        0,
+        10,
+        Some(my_sum),
+        CString::new("This will add all the numbers you pass to it!")
             .unwrap()
             .as_ptr(),
         std::ptr::null_mut(),
@@ -48,19 +59,26 @@ pub unsafe extern "C" fn emacs_module_init(ert: *mut emacs_runtime) -> libc::c_i
     let intern = (*env).intern.expect("could not get intern in main");
 
     println!("interning my-rust-func");
-    let fn_name = intern(env, CString::new("my-rust-fn").unwrap().as_ptr());
+    let fn_name = intern(env, CString::new("my-message-from-rust").unwrap().as_ptr());
     println!("interning my-rust-mod");
     let mod_name = intern(env, CString::new("my-rust-mod").unwrap().as_ptr());
 
+    println!("interning sum_name");
+    let sum_name = intern(env, CString::new("my-sum").unwrap().as_ptr());
+
     let fset = intern(env, CString::new("fset").unwrap().as_ptr());
     let provide = intern(env, CString::new("provide").unwrap().as_ptr());
-    let fset_args = [fn_name, f].as_mut_ptr();
+    let fset_args = [fn_name, my_message].as_mut_ptr();
+
+    let fset_second_args = [sum_name, my_sum].as_mut_ptr();
 
     let provide_args = [mod_name].as_mut_ptr();
 
     let funcall = (*env).funcall.expect("cannot get funcall");
     println!("calling fset");
     funcall(env, fset, 2, fset_args);
+    println!("calling fset again");
+    funcall(env, fset, 2, fset_second_args);
     println!("calling provide");
     funcall(env, provide, 1, provide_args);
 
@@ -76,9 +94,9 @@ unsafe fn provide(env: *mut emacs_env, feature: &str) {
 }
 
 #[no_mangle]
-unsafe extern "C" fn my_func(
+unsafe extern "C" fn message_from_rust(
     env: *mut emacs_env,
-    nargs: libc::ptrdiff_t,
+    nargs: isize,
     args: *mut emacs_value,
     data: *mut raw::c_void,
 ) -> emacs_value {
@@ -87,6 +105,30 @@ unsafe extern "C" fn my_func(
     let c_string = CString::new(s).unwrap();
     let len = c_string.as_bytes().len() as isize;
     make_string(env, c_string.as_ptr(), len)
+}
+
+#[no_mangle]
+unsafe extern "C" fn my_sum(
+    env: *mut emacs_env,
+    nargs: isize,
+    args: *mut emacs_value,
+    data: *mut raw::c_void,
+) -> emacs_value {
+    let extract_integer = (*env)
+        .extract_integer
+        .expect("could not get extract_integer");
+
+    let mut ints = Vec::new();
+
+    for i in 0..nargs {
+        ints.push(extract_integer(env, *args.offset(i)));
+    }
+
+    let sum = ints.iter().fold(0, |acc, n| acc + n);
+
+    let make_integer = (*env).make_integer.expect("could not get make_integer");
+
+    make_integer(env, sum)
 }
 
 pub extern "C" fn make_emacs_string<S>(env: *mut emacs_env, string: S) -> emacs_value
