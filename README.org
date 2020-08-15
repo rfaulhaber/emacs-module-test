@@ -14,3 +14,5 @@ For reasons I don't understand, here are some issues:
 - Many of my own functions don't work. If you replace a call to =intern= with
   =intern_sym=, for example, where the latter does the same as the former, this
   code will cause a segfault
+
+I wrote an article about this repo! You can find it [[https://ryanfaulhaber.com/posts/first-emacs-module-rust/][here]]!
